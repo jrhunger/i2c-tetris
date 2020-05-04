@@ -29,7 +29,7 @@
 // with the emitter on ground and the collector on PS_ON of the ATX power supply)
 // actually there is a resistor and led in series as well for visual indicator
 // of when the LED Power "should" be on.
-const int ledPowerPin=19;
+const int ledPowerPin=1;
 
 // OctoWS2811 used to control the LEDs, info @ https://www.pjrc.com/teensy/td_libs_OctoWS2811.html
 #include <OctoWS2811.h>
@@ -45,16 +45,19 @@ const int activeStrips = 8;
 const int numPixels = ledsPerStrip * activeStrips;
 
 // variables, here, hardcoded elsewhere, e.g. xy16x25()
-const int gifHeight=25;
-const int gifWidth=16;
+const int gridHeight=25;
+const int gridWidth=16;
 
 OctoWS2811 leds(ledsPerStrip, displayMemory, drawingMemory, config);
 
 void xp16x25Setup() {
+  pinMode(ledPowerPin, OUTPUT);
   digitalWrite(ledPowerPin, LOW);
+  digitalWrite(LOOP_LED, LOW);
   // wait 1 second before turning on the power
   delay(1000);
   digitalWrite(ledPowerPin, HIGH);
+  digitalWrite(LOOP_LED, HIGH);
   // then wait 1 second before attempting to control the LEDs
   delay(1000);
   leds.begin();
@@ -138,10 +141,10 @@ void updateScreen() {
 
 // draw 16x25 pixel saved in GIMP C header format and .h file included above
 void drawFrame(const int *frames, int frameNum) {
-  for (byte y = 0; y < gifHeight; y++) {
-    for (byte x = 0; x < gifWidth; x++) {  
-      int loc = x + y*gifWidth;
-      leds.setPixel(xy16x25(x,y),frames[frameNum*gifWidth*gifHeight+loc]);
+  for (byte y = 0; y < gridHeight; y++) {
+    for (byte x = 0; x < gridWidth; x++) {  
+      int loc = x + y*gridWidth;
+      leds.setPixel(xy16x25(x,y),frames[frameNum*gridWidth*gridHeight+loc]);
     }
   }
   leds.show();
@@ -149,10 +152,10 @@ void drawFrame(const int *frames, int frameNum) {
 
 // draw 16x25 pixel saved in GIMP C header format and .h file included above
 void drawFrame(const int *frames, int frameNum, float brightScale) {
-  for (byte y = 0; y < gifHeight; y++) {
-    for (byte x = 0; x < gifWidth; x++) {  
-      int loc = x + y*gifWidth;
-      leds.setPixel(xy16x25(x,y),scalePixel(frames[frameNum*gifWidth*gifHeight+loc],brightScale));
+  for (byte y = 0; y < gridHeight; y++) {
+    for (byte x = 0; x < gridWidth; x++) {  
+      int loc = x + y*gridWidth;
+      leds.setPixel(xy16x25(x,y),scalePixel(frames[frameNum*gridWidth*gridHeight+loc],brightScale));
     }
   }
   leds.show();

@@ -3,13 +3,7 @@
 //            Original: https://github.com/MarginallyClever/shift-register-tetris
 //------------------------------------------------------------------------------
 */
-#include <SoftwareSerial.h>
         
-// size of the LED grid
-#define GRID_W              (16)
-#define GRID_H              (25)
-#define STRAND_LENGTH       (GRID_W*GRID_H)
-#define LED_DATA_PIN        (6)
 // did you wire your grid in an 'S' instead of a 'Z'?  change this value to 0.
 #define BACKWARDS           (0)
 // max size of each tetris piece
@@ -19,7 +13,6 @@
 #define NUM_PIECE_TYPES     (7)
 // joystick options
 #define JOYSTICK_DEAD_ZONE  (30)
-#define JOYSTICK_PIN        (2)
 // gravity options
 #define DROP_MINIMUM        (25)  // top speed gravity can reach
 #define DROP_ACCELERATION   (20)  // how fast gravity increases
@@ -29,19 +22,12 @@
 //////////////////////////////////////////////////////////////////
 
 //Inputs/outputs
-#define MAX7219_Data_IN 3
-#define MAX7219_Chip_Select  4
-#define MAX7219_Clock 5
 int button_left = 8;
 int button_right = 9;
 int button_up = 11;
 int button_down = 10;
 int button_pause = 7;
 int button_start = 12;
-int buzzer = 13;
-int joystick_x = A0;
-int joystick_y = A1;
-
 
 //Variables
 byte adr = 0x08;
@@ -278,7 +264,7 @@ long last_draw;
 long draw_delay;  // 60 fps
 
 // this is how arduino remembers where pieces are on the grid.
-long grid[GRID_W*GRID_H];
+long grid[gridWidth*gridHeight];
 
 
 //--------------------------------------------------------------------------------
@@ -295,10 +281,10 @@ void p(int x,int y,long color) {
 // grid contains the arduino's memory of the game board, including the piece that is falling.
 void draw_grid() {
   int x, y;
-  for(y=0;y<GRID_H;++y) {
-    for(x=0;x<GRID_W;++x) {
-      if( grid[y*GRID_W+x] != 0 ) {
-        p(x,y,grid[y*GRID_W+x]);
+  for(y=0;y<gridHeight;++y) {
+    for(x=0;x<gridWidth;++x) {
+      if( grid[y*gridWidth+x] != 0 ) {
+        p(x,y,grid[y*gridWidth+x]);
       } else {
         p(x,y,0);
       }
@@ -318,7 +304,7 @@ int piece_off_edge(int px,int py,int pr) {
       if(ny<0) continue;  // off top, don't care
       if(piece[y*PIECE_W+x]>0) {
         if(nx<0) return 1;  // yes: off left side
-        if(nx>=GRID_W ) return 1;  // yes: off right side
+        if(nx>=gridWidth ) return 1;  // yes: off right side
       }
     }
   }
@@ -336,8 +322,8 @@ int piece_hits_rubble(int px,int py,int pr) {
     for(x=0;x<PIECE_W;++x) {
       int nx=px+x;
       if(piece[y*PIECE_W+x]>0) {
-        if(ny>=GRID_H ) return 1;  // yes: goes off bottom of grid      
-        if(grid[ny*GRID_W+nx]!=0 ) return 1;  // yes: grid already full in this space
+        if(ny>=gridHeight ) return 1;  // yes: goes off bottom of grid      
+        if(grid[ny*gridWidth+nx]!=0 ) return 1;  // yes: grid already full in this space
       }
     }
   }
@@ -397,10 +383,10 @@ void erase_piece_from_grid() {
     for(x=0;x<PIECE_W;++x) {
       int nx=piece_x+x;
       int ny=piece_y+y;
-      if(ny<0 || ny>GRID_H) continue;
-      if(nx<0 || nx>GRID_W) continue;
+      if(ny<0 || ny>gridHeight) continue;
+      if(nx<0 || nx>gridWidth) continue;
       if(piece[y*PIECE_W+x]==1) {
-        grid[ny*GRID_W+nx]=0;  // zero erases the grid location.
+        grid[ny*gridWidth+nx]=0;  // zero erases the grid location.
       }
     }
   }
@@ -416,10 +402,10 @@ void add_piece_to_grid() {
     for(x=0;x<PIECE_W;++x) {
       int nx=piece_x+x;
       int ny=piece_y+y;
-      if(ny<0 || ny>GRID_H) continue;
-      if(nx<0 || nx>GRID_W) continue;
+      if(ny<0 || ny>gridHeight) continue;
+      if(nx<0 || nx>gridWidth) continue;
       if(piece[y*PIECE_W+x]==1) {
-        grid[ny*GRID_W+nx]=piece_colors[piece_id];  // zero erases the grid location.
+        grid[ny*gridWidth+nx]=piece_colors[piece_id];  // zero erases the grid location.
       }
     }
   }
@@ -460,12 +446,12 @@ void delete_row(int y) {
   
   int x;
   for(;y>0;--y) {
-    for(x=0;x<GRID_W;++x) {
-      grid[y*GRID_W+x] = grid[(y-1)*GRID_W+x];
+    for(x=0;x<gridWidth;++x) {
+      grid[y*gridWidth+x] = grid[(y-1)*gridWidth+x];
     }
   }
   // everything moved down 1, so the top row must be empty or the game would be over.
-  for(x=0;x<GRID_W;++x) {
+  for(x=0;x<gridWidth;++x) {
     grid[x]=0;
   }
 }
@@ -479,13 +465,13 @@ void fall_faster() {
 void remove_full_rows() {
   int x, y, c;
   
-  for(y=0;y<GRID_H;++y) {
+  for(y=0;y<gridHeight;++y) {
     // count the full spaces in this row
     c = 0;
-    for(x=0;x<GRID_W;++x) {
-      if( grid[y*GRID_W+x] > 0 ) c++;
+    for(x=0;x<gridWidth;++x) {
+      if( grid[y*gridWidth+x] > 0 ) c++;
     }
-    if(c==GRID_W) {
+    if(c==gridWidth) {
       // row full!
       delete_row(y);
       fall_faster();
@@ -496,7 +482,7 @@ void remove_full_rows() {
 
 void try_to_move_piece_sideways() {
   // what does the joystick angle say
-  int dx = map(analogRead(joystick_x),0,1023,512,-512);
+  int dx = 0; // fake idle joystick
   
   int new_px = 0;
   // is the joystick really being pushed?
@@ -507,15 +493,15 @@ void try_to_move_piece_sideways() {
     new_px=1;
   }
   
-  if(!digitalRead(button_left))
-  {
-    new_px=-1;
-  }
+//  if(!digitalRead(button_left))
+//  {
+//    new_px=-1;
+//  }
 
-  if(!digitalRead(button_right))
-  {
-    new_px=1;
-  }
+//  if(!digitalRead(button_right))
+//  {
+//    new_px=1;
+//  }
   
 
   if(new_px!=old_px && piece_can_fit(piece_x+new_px,piece_y,piece_rotation)==1) {
@@ -530,7 +516,7 @@ void try_to_rotate_piece() {
   int i_want_to_turn=0;
   
   // what does the joystick button say
-  int new_button = digitalRead(button_up);
+  int new_button = 0; //digitalRead(button_up);
   // if the button state has just changed AND it is being let go,
   if( new_button > 0 && old_button != new_button ) {
     i_want_to_turn=1;
@@ -538,7 +524,7 @@ void try_to_rotate_piece() {
   old_button=new_button;
   
   // up on joystick to rotate
-  int dy = map(analogRead(joystick_y),0,1023,512,-512);
+  int dy = 0;
   if(dy>JOYSTICK_DEAD_ZONE) i_want_to_turn=1;
   
   if(i_want_to_turn==1 && i_want_to_turn != old_i_want_to_turn) {
@@ -620,12 +606,12 @@ void game_over() {
     }    
      
     // click the button?
-    if(!digitalRead(button_start)) {
-      // restart!
-      all_white();
-      delay(400);
-      break;
-    }
+//    if(!digitalRead(button_start)) {
+//      // restart!
+//      all_white();
+//      delay(400);
+//      break;
+//    }
   }
   all_white();
   setup();
@@ -669,12 +655,12 @@ void try_to_drop_piece() {
 
 
 void try_to_drop_faster() {
-  int y = map(analogRead(joystick_y),0,1023,512,-512);
+  int y = 0; // fake idle joystick
 
-  if(!digitalRead(button_down))
-  {
-    try_to_drop_piece();
-  }
+//  if(!digitalRead(button_down))
+//  {
+//    try_to_drop_piece();
+//  }
   
   if(y<-JOYSTICK_DEAD_ZONE) {
     // player is holding joystick down, drop a little faster.
@@ -697,17 +683,13 @@ void tetrisSetup() {
   //Setup 
   int i;
   
-  // set up joystick button
-  pinMode(JOYSTICK_PIN,INPUT);
-  digitalWrite(JOYSTICK_PIN,HIGH);
-  
   // make sure arduino knows the grid is empty.
-  for(i=0;i<GRID_W*GRID_H;++i) {
+  for(i=0;i<gridWidth*gridHeight;++i) {
     grid[i]=0;
   }
   
   // make the game a bit more random - pull a number from space and use it to 'seed' a crop of random numbers.
-  randomSeed(analogRead(joystick_y)+analogRead(2)+analogRead(3));
+  randomSeed(25533); // TODO better random seed
   
   // get ready to start the game.
   choose_new_piece();
@@ -754,6 +736,7 @@ void tetrisLoop() {
 
   if(!Pause)
   {
+    /*
     if(!digitalRead(button_pause) && !pause_pressed)
     {
       Pause = !Pause;
@@ -764,6 +747,7 @@ void tetrisLoop() {
     {      
       pause_pressed = false;
     }
+    */
     
     // the game plays at one speed,
     if(t - last_move > move_delay ) {
@@ -786,7 +770,7 @@ void tetrisLoop() {
 
   else
   {
-    if(!digitalRead(button_pause) && !pause_pressed)
+    /*if(!digitalRead(button_pause) && !pause_pressed)
     {
       Pause = !Pause;
       pause_pressed = true;
@@ -795,6 +779,7 @@ void tetrisLoop() {
     {      
       pause_pressed = false;
     }
+    */
     draw_pause();
     delay(1);
   }
