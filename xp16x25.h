@@ -1,7 +1,35 @@
 /* xp16x25.h - functions and variables used to control my homebrew 16x25 
  *  display controlled by Teensy OctoWS2811
  *  
+ *  make sure to set ledPowerPin appropriately
+ *  
+ *  set things up before using:
+ *    xp16x25Setup()
+ *  
+ *  get pixel index (used for input to draw/scale) from x,y coordinates:
+ *    xy16x25(unsigned int x, unsigned int y)
+ *  
+ *  draw pixel:
+ *    drawPixel(unsigned int x, unsigned int y, int color)
+ *    drawPixel(unsigned int x, unsigned int y, byte red, byte green, byte blue)
+ *  
+ *  fill screen with one color:
+ *    fillScreen(int color)
+ *  
+ *  change brightness of pixel:   
+ *    scalePixel(int pixel, float scale)
+ *    
+ *  change brightness of all pixels:
+ *    adjustBrightness(float scale)
+ *  
 */
+
+// ledPowerPin is configured so when it is set high it will turn
+// on the power to the LEDs (it's hooked to the base of an NPN transistor
+// with the emitter on ground and the collector on PS_ON of the ATX power supply)
+// actually there is a resistor and led in series as well for visual indicator
+// of when the LED Power "should" be on.
+const int ledPowerPin=19;
 
 // OctoWS2811 used to control the LEDs, info @ https://www.pjrc.com/teensy/td_libs_OctoWS2811.html
 #include <OctoWS2811.h>
@@ -22,13 +50,6 @@ const int gifWidth=16;
 
 OctoWS2811 leds(ledsPerStrip, displayMemory, drawingMemory, config);
 
-// ledPowerPin is configured so when it is set high it will turn
-// on the power to the LEDs (it's hooked to the base of an NPN transistor
-// with the emitter on ground and the collector on PS_ON of the ATX power supply)
-// actually there is a resistor and led in series as well for visual indicator
-// of when the LED Power "should" be on.
-const int ledPowerPin=19;
-
 void xp16x25Setup() {
   digitalWrite(ledPowerPin, LOW);
   // wait 1 second before turning on the power
@@ -38,6 +59,11 @@ void xp16x25Setup() {
   delay(1000);
   leds.begin();
   leds.show();
+}
+
+// rgb2int() return int value of r,g,b
+int rgb2int(byte r, byte g, byte b) {
+  return 256*256*r + 256*g + b;
 }
 
 // xy16x25() turns matrix coordinates into the numeric index used by OctoWS2811
@@ -77,6 +103,16 @@ int scalePixel(int pixel, float scale) {
   g = scaleColor((pixel >> 8 ) & 0xFF, scale);
   r = scaleColor(pixel & 0xFF, scale);
   return((b<<16)+(g<<8)+r);
+}
+
+//draw pixel by sequence with int color
+void drawPixel(unsigned int p, int color) {
+  leds.setPixel(p,color);
+}
+
+//draw pixel by sequence with rgb
+void drawPixel(unsigned int p, byte red, byte green, byte blue) {
+  leds.setPixel(p, red, green, blue);
 }
 
 // draw pixel int color

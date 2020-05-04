@@ -2,16 +2,12 @@
 // Tetris stolen from: https://electronoobs.com/eng_arduino_tut104_code1.php
 //            Original: https://github.com/MarginallyClever/shift-register-tetris
 //------------------------------------------------------------------------------
-
-#include <Adafruit_NeoPixel.h>  //Downlaod here: https://electronoobs.com/eng_arduino_Adafruit_NeoPixel.php
-#include "EEPROMAnything.h"
+*/
 #include <SoftwareSerial.h>
-#include <DFMiniMp3.h>          //Downlaod here: https://electronoobs.com/eng_arduino_DFMiniMp3.php
-
         
 // size of the LED grid
-#define GRID_W              (8)
-#define GRID_H              (16)
+#define GRID_W              (16)
+#define GRID_H              (25)
 #define STRAND_LENGTH       (GRID_W*GRID_H)
 #define LED_DATA_PIN        (6)
 // did you wire your grid in an 'S' instead of a 'Z'?  change this value to 0.
@@ -31,51 +27,6 @@
 #define INITIAL_DROP_DELAY  (500)
 #define INITIAL_DRAW_DELAY  (30)
 //////////////////////////////////////////////////////////////////
-
-
-
-
-// implement a notification class, // its member methods will get called //
-class Mp3Notify
-{
-public:
-  static void OnError(uint16_t errorCode)
-  {
-    // see DfMp3_Error for code meaning
-    Serial.println();
-    Serial.print("Com Error ");
-    Serial.println(errorCode);
-  }
-  static void OnPlayFinished(uint16_t globalTrack)
-  {
-    Serial.println();
-    Serial.print("Play finished for #");
-    Serial.println(globalTrack);   
-  }
-  static void OnCardOnline(uint16_t code)
-  {
-    Serial.println();
-    Serial.print("Card online ");
-    Serial.println(code);     
-  }
-  static void OnCardInserted(uint16_t code)
-  {
-    Serial.println();
-    Serial.print("Card inserted ");
-    Serial.println(code); 
-  }
-  static void OnCardRemoved(uint16_t code)
-  {
-    Serial.println();
-    Serial.print("Card removed ");
-    Serial.println(code);  
-  }
-};
-DFMiniMp3<HardwareSerial, Mp3Notify> mp3(Serial);
-//////////////////////////////////////////////////////////////////
-
-
-
 
 //Inputs/outputs
 #define MAX7219_Data_IN 3
@@ -107,22 +58,10 @@ int score_2 = 0;
 int score_3 = 0;
 int score_4 = 0;
 bool Pause = false;
-bool pause_onece = false;
+bool pause_once = false;
 bool pause_pressed = false;
 unsigned long previousMillis = 0; 
 unsigned long currentMillis = 0;
-
-//Function to shift data on the 7 segment module
-void shift(byte send_to_address, byte send_this_data)
-{
-  digitalWrite(MAX7219_Chip_Select, LOW);
-  shiftOut(MAX7219_Data_IN, MAX7219_Clock, MSBFIRST, send_to_address);
-  shiftOut(MAX7219_Data_IN, MAX7219_Clock, MSBFIRST, send_this_data);
-  digitalWrite(MAX7219_Chip_Select, HIGH);
-}
-//////////////////////////////////////////////////////////////////
-
-
 
 
 // 1 color drawings of each piece in each rotation.
@@ -306,18 +245,6 @@ const long piece_colors[NUM_PIECE_TYPES] = {
   0x00FFFF,  // cyan I
 };
 
-
-//-------------GLOBALS----------------------------------------------------------
-// Parameter 1 = number of pixels in strip
-// Parameter 2 = Arduino pin number (most are valid)
-// Parameter 3 = pixel type flags, add together as needed:
-//   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
-//   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
-//   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
-//   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(STRAND_LENGTH, LED_DATA_PIN, NEO_RGB + NEO_KHZ800);
-
-
 // this is how arduino remembers what the button was doing in the past,
 // so arduino can tell when it changes.
 int old_button=0;
@@ -360,18 +287,8 @@ long grid[GRID_W*GRID_H];
 
 
 // I want to turn on point P(x,y), which is X from the left and Y from the top.
-// I might also want to hold it on for us microseconds.
 void p(int x,int y,long color) {
-  int a = (GRID_H-1-y)*GRID_W;
-  if( ( y % 2 ) == BACKWARDS ) {  // % is modulus.
-    // y%2 is false when y is an even number - rows 0,2,4,6.
-    a += x;
-  } else {
-    // y%2 is true when y is an odd number - rows 1,3,5,7.
-    a += GRID_W - 1 - x;
-  }
-  a%=STRAND_LENGTH;
-  strip.setPixelColor(a,color);
+  drawPixel(x,y,color);
 }
 
 
@@ -387,8 +304,55 @@ void draw_grid() {
       }
     }
   }
-  strip.show();
+  updateScreen();
 }
+
+int piece_off_edge(int px,int py,int pr) {
+  int x,y;
+  const char *piece = pieces[piece_id] + (pr * PIECE_H * PIECE_W);
+  
+  for(y=0;y<PIECE_H;++y) {
+    for(x=0;x<PIECE_W;++x) {
+      int nx=px+x;
+      int ny=py+y;
+      if(ny<0) continue;  // off top, don't care
+      if(piece[y*PIECE_W+x]>0) {
+        if(nx<0) return 1;  // yes: off left side
+        if(nx>=GRID_W ) return 1;  // yes: off right side
+      }
+    }
+  }
+  
+  return 0;  // inside limits
+}
+
+int piece_hits_rubble(int px,int py,int pr) {
+  int x,y;
+  const char *piece = pieces[piece_id] + (pr * PIECE_H * PIECE_W);
+  
+  for(y=0;y<PIECE_H;++y) {    
+    int ny=py+y;
+    if(ny<0) continue;
+    for(x=0;x<PIECE_W;++x) {
+      int nx=px+x;
+      if(piece[y*PIECE_W+x]>0) {
+        if(ny>=GRID_H ) return 1;  // yes: goes off bottom of grid      
+        if(grid[ny*GRID_W+nx]!=0 ) return 1;  // yes: grid already full in this space
+      }
+    }
+  }
+  
+  return 0;  // doesn't hit
+}
+
+// can the piece fit in this new location?
+int piece_can_fit(int px,int py,int pr) {
+  if( piece_off_edge(px,py,pr) ) return 0;
+  if( piece_hits_rubble(px,py,pr) ) return 0;
+  return 1;
+}
+
+
 
 // choose a new piece from the sequence.
 // the sequence is a random list that contains one of each piece.
@@ -464,10 +428,9 @@ void add_piece_to_grid() {
 
 // Move everything down 1 space, destroying the old row number y in the process.
 void delete_row(int y) {
-  digitalWrite(buzzer,HIGH);
   delay(35);
-  digitalWrite(buzzer,LOW);
   score = score + 10;
+/*  
   if(score > top_score)
   {
     EEPROM_writeAnything(1, score);
@@ -493,7 +456,7 @@ void delete_row(int y) {
   shift(0x03, top_score_3);
   shift(0x02, top_score_2);
   shift(0x01, top_score_1); //digit 0 (rightmost digit) data
-
+*/
   
   int x;
   for(;y>0;--y) {
@@ -515,7 +478,6 @@ void fall_faster() {
 
 void remove_full_rows() {
   int x, y, c;
-  char row_removed=0;
   
   for(y=0;y<GRID_H;++y) {
     // count the full spaces in this row
@@ -559,9 +521,6 @@ void try_to_move_piece_sideways() {
   if(new_px!=old_px && piece_can_fit(piece_x+new_px,piece_y,piece_rotation)==1) {
     piece_x+=new_px;
   }
-
-
-
   
   old_px = new_px;
 }
@@ -604,95 +563,16 @@ void try_to_rotate_piece() {
 }
 
 
-// can the piece fit in this new location?
-int piece_can_fit(int px,int py,int pr) {
-  if( piece_off_edge(px,py,pr) ) return 0;
-  if( piece_hits_rubble(px,py,pr) ) return 0;
-  return 1;
-}
-
-
-int piece_off_edge(int px,int py,int pr) {
-  int x,y;
-  const char *piece = pieces[piece_id] + (pr * PIECE_H * PIECE_W);
-  
-  for(y=0;y<PIECE_H;++y) {
-    for(x=0;x<PIECE_W;++x) {
-      int nx=px+x;
-      int ny=py+y;
-      if(ny<0) continue;  // off top, don't care
-      if(piece[y*PIECE_W+x]>0) {
-        if(nx<0) return 1;  // yes: off left side
-        if(nx>=GRID_W ) return 1;  // yes: off right side
-      }
-    }
-  }
-  
-  return 0;  // inside limits
-}
-
-
-int piece_hits_rubble(int px,int py,int pr) {
-  int x,y;
-  const char *piece = pieces[piece_id] + (pr * PIECE_H * PIECE_W);
-  
-  for(y=0;y<PIECE_H;++y) {    
-    int ny=py+y;
-    if(ny<0) continue;
-    for(x=0;x<PIECE_W;++x) {
-      int nx=px+x;
-      if(piece[y*PIECE_W+x]>0) {
-        if(ny>=GRID_H ) return 1;  // yes: goes off bottom of grid      
-        if(grid[ny*GRID_W+nx]!=0 ) return 1;  // yes: grid already full in this space
-      }
-    }
-  }
-  
-  return 0;  // doesn't hit
-}
-
-
-
 void draw_restart()
 {
-  for(int i=0;i<STRAND_LENGTH;i++)
-   {
-    // pixels.Color takes RGB values, from 0,0,0 up to 255,255,255
-    strip.setPixelColor(i, strip.Color(0,0,0)); // Moderately bright green color.  
-   }
+  fillScreen(0);
 
-   /*strip.setPixelColor(12, strip.Color(150,150,150)); 
-   strip.setPixelColor(19, strip.Color(150,150,150)); 
-   strip.setPixelColor(28, strip.Color(150,150,150)); 
-   strip.setPixelColor(34, strip.Color(150,150,150)); 
-   strip.setPixelColor(45, strip.Color(150,150,150)); 
-   strip.setPixelColor(50, strip.Color(150,150,150)); 
-   strip.setPixelColor(51, strip.Color(150,150,150)); 
-   strip.setPixelColor(52, strip.Color(150,150,150)); 
-   strip.setPixelColor(53, strip.Color(150,150,150)); */
-   strip.setPixelColor(55, strip.Color(150,150,150)); 
-   digitalWrite(buzzer,HIGH);
-   delay(10);
-   digitalWrite(buzzer,LOW); 
-   strip.setPixelColor(74, strip.Color(150,150,150)); 
-   strip.setPixelColor(77, strip.Color(150,150,150));
-   strip.setPixelColor(83, strip.Color(150,150,150));  
-   strip.setPixelColor(85, strip.Color(150,150,150)); 
-   strip.setPixelColor(90, strip.Color(150,150,150)); 
-   strip.setPixelColor(91, strip.Color(150,150,150)); 
-   strip.setPixelColor(92, strip.Color(150,150,150)); 
-   strip.setPixelColor(93, strip.Color(150,150,150)); 
-   strip.setPixelColor(98, strip.Color(150,150,150)); 
-   strip.setPixelColor(101, strip.Color(150,150,150)); 
-   strip.setPixelColor(106, strip.Color(150,150,150)); 
-   strip.setPixelColor(107, strip.Color(150,150,150)); 
-   strip.setPixelColor(108, strip.Color(150,150,150)); 
-   strip.setPixelColor(109, strip.Color(150,150,150)); 
-   strip.show(); // This sends the updated pixel color to the hardware.
-   /*if(!pause_onece)
+  // there was code to draw an R here, i think
+
+   /*if(!pause_once)
    {
     mp3.playMp3FolderTrack(2);  
-    pause_onece = true;
+    pause_once = true;
     delay(1000);
    }*/
 }
@@ -703,23 +583,26 @@ void draw_restart()
 
 void all_white()
 {
-  for(int i=0;i<STRAND_LENGTH;i++){
-
-    // pixels.Color takes RGB values, from 0,0,0 up to 255,255,255
-    strip.setPixelColor(i, strip.Color(120,120,120)); // Moderately bright green color.
-    strip.show(); // This sends the updated pixel color to the hardware.
-    delay(3); // Delay for a period of time (in milliseconds).
-  }
-   
+  fillScreen(rgb2int(120,120,120));
 }
 
 
+void game_over_loop_leds()
+{
+  for(int i=0;i<numPixels;i++){
+    // pixels.Color takes RGB values, from 0,0,0 up to 255,255,255
+    drawPixel(i, rgb2int(0,150,0)); // Moderately bright green color.
+
+    updateScreen(); // This sends the updated pixel color to the hardware.
+
+    delay(10); // Delay for a period of time (in milliseconds).
+  }
+}
+
 void game_over() {
   score = 0;
-  mp3.playMp3FolderTrack(4);  // engine start + submarine sound
   game_over_loop_leds();
   delay(1000);
-  int x,y;
 
   long over_time = millis();
   draw_restart();
@@ -730,46 +613,41 @@ void game_over() {
     currentMillis = millis();
     if(currentMillis - previousMillis >= 1000){
       previousMillis += 1000;
-      digitalWrite(buzzer,HIGH);
-      delay(10);
-      digitalWrite(buzzer,LOW);    
-      strip.setPixelColor(55-led_number, strip.Color(150,150,150));  
-      strip.show();
+      delay(10); 
+      drawPixel(55-led_number, rgb2int(150,150,150));  
+      updateScreen();
       led_number += 1; 
     }    
-   
-    
+     
     // click the button?
     if(!digitalRead(button_start)) {
       // restart!
-      mp3.playMp3FolderTrack(3);  // engine start + submarine sound
       all_white();
       delay(400);
       break;
     }
   }
-  mp3.playMp3FolderTrack(3);  // engine start + submarine sound
   all_white();
   setup();
   return;
 }
 
-
-void game_over_loop_leds()
-{
-  for(int i=0;i<STRAND_LENGTH;i++){
-
-    // pixels.Color takes RGB values, from 0,0,0 up to 255,255,255
-    strip.setPixelColor(i, strip.Color(0,150,0)); // Moderately bright green color.
-
-    strip.show(); // This sends the updated pixel color to the hardware.
-
-    delay(10); // Delay for a period of time (in milliseconds).
-
+// can the piece fit in this new location
+int game_is_over() {
+  int x,y;
+  const char *piece = pieces[piece_id] + (piece_rotation * PIECE_H * PIECE_W);
+  
+  for(y=0;y<PIECE_H;++y) {
+    for(x=0;x<PIECE_W;++x) {      
+      int ny=piece_y+y;
+      if(piece[y*PIECE_W+x]>0) {
+        if(ny<0) return 1;  // yes: off the top!
+      }
+    }
   }
   
+  return 0;  // not over yet...
 }
-
 
 void try_to_drop_piece() {
   erase_piece_from_grid();  
@@ -814,84 +692,10 @@ void react_to_player() {
   try_to_drop_faster();
 }
 
-
-// can the piece fit in this new location
-int game_is_over() {
-  int x,y;
-  const char *piece = pieces[piece_id] + (piece_rotation * PIECE_H * PIECE_W);
-  
-  for(y=0;y<PIECE_H;++y) {
-    for(x=0;x<PIECE_W;++x) {      
-      int ny=piece_y+y;
-      int nx=piece_x+x;
-      if(piece[y*PIECE_W+x]>0) {
-        if(ny<0) return 1;  // yes: off the top!
-      }
-    }
-  }
-  
-  return 0;  // not over yet...
-}
-
-
 // called once when arduino reboots
-void setup() {
-  Serial.begin(115200);  
-  mp3.begin();
-  uint16_t volume = mp3.getVolume();
-  mp3.setVolume(30);  
-  uint16_t count = mp3.getTotalTrackCount();
-  delay(1000);
-  mp3.playMp3FolderTrack(1);  // engine start + submarine sound
-  //EEPROM_writeAnything(1, 000);
-  
-  pinMode(MAX7219_Data_IN, OUTPUT);
-  pinMode(MAX7219_Chip_Select, OUTPUT);
-  pinMode(MAX7219_Clock, OUTPUT);
-  digitalWrite(MAX7219_Clock, HIGH);
-
-  pinMode(button_pause,INPUT_PULLUP);
-  pinMode(button_start,INPUT_PULLUP);
-  pinMode(button_left,INPUT_PULLUP);
-  pinMode(button_right,INPUT_PULLUP);
-  pinMode(button_up,INPUT_PULLUP);
-  pinMode(button_down,INPUT_PULLUP);
-
-  pinMode(buzzer,OUTPUT);
-  delay(1);
-
-  //Setup
-  shift(0x0f, 0x00); //display test register - test mode off
-  shift(0x0c, 0x01); //shutdown register - normal operation
-  shift(0x0b, 0x07); //scan limit register - display digits 0 thru 7
-  shift(0x0a, 0x0f); //intensity register - max brightness
-  shift(0x09, 0xff); //decode mode register - CodeB decode all digits
-  
-  EEPROM_readAnything(1,top_score);
-
-  Serial.println(top_score);
-  
-  top_score_1 = top_score - (  ( top_score/10 ) * 10  );
-  top_score_2 = ((top_score - (  ( top_score/100 ) * 100  )) - top_score_1)/10;
-  top_score_3 = ((top_score - (  ( top_score/1000 ) * 1000  )) - top_score_1 - top_score_2)/100;
-  top_score_4 = (top_score - top_score_1 - top_score_2 - top_score_3) / 1000;
-  
-  
-  shift(0x08, 0x0f); //digit 7 (leftmost digit) data
-  shift(0x07, 0x0f);
-  shift(0x06, 0x0f);
-  shift(0x05, 0x0f);
-  shift(0x04, top_score_4);
-  shift(0x03, top_score_3);
-  shift(0x02, top_score_2);
-  shift(0x01, top_score_1); //digit 0 (rightmost digit) data
-
-
-  
+void tetrisSetup() {  
+  //Setup 
   int i;
-  // setup the LEDs
-  strip.begin();
-  strip.show(); // Initialize all pixels to 'off'
   
   // set up joystick button
   pinMode(JOYSTICK_PIN,INPUT);
@@ -926,49 +730,26 @@ void waitMilliseconds(uint16_t msWait)
   
   while ((millis() - start) < msWait)
   {
-    // calling mp3.loop() periodically allows for notifications 
-    // to be handled without interrupts
-    mp3.loop(); 
+    // leaving in case any interrupt loop stuff needed
     delay(1);
   }
 }
 
 void draw_pause()
 {  
-   for(int i=0;i<STRAND_LENGTH;i++)
-   {
-    // pixels.Color takes RGB values, from 0,0,0 up to 255,255,255
-    strip.setPixelColor(i, strip.Color(0,0,0)); // Moderately bright green color.  
-   }
+   fillScreen(0);
    
-   strip.setPixelColor(53, strip.Color(150,150,150)); 
-   strip.setPixelColor(58, strip.Color(150,150,150)); 
-   strip.setPixelColor(66, strip.Color(150,150,150)); 
-   strip.setPixelColor(67, strip.Color(150,150,150)); 
-   strip.setPixelColor(68, strip.Color(150,150,150)); 
-   strip.setPixelColor(69, strip.Color(150,150,150)); 
-   strip.setPixelColor(74, strip.Color(150,150,150)); 
-   strip.setPixelColor(77, strip.Color(150,150,150)); 
-   strip.setPixelColor(82, strip.Color(150,150,150)); 
-   strip.setPixelColor(83, strip.Color(150,150,150)); 
-   strip.setPixelColor(84, strip.Color(150,150,150)); 
-   strip.setPixelColor(85, strip.Color(150,150,150)); 
-   strip.show(); // This sends the updated pixel color to the hardware.
-   if(!pause_onece)
+   // there was code to show a P on the screen
+   updateScreen(); // This sends the updated pixel color to the hardware.
+   if(!pause_once)
    {
-    mp3.playMp3FolderTrack(2);  // engine start + submarine sound
-    pause_onece = true;
+    pause_once = true;
     delay(1000);
    }
 }
 
-
-
-
-
-
 // called over and over after setup()
-void loop() {
+void tetrisLoop() {
   long t = millis();
 
   if(!Pause)
@@ -977,7 +758,7 @@ void loop() {
     {
       Pause = !Pause;
       pause_pressed = true;
-      pause_onece = false;
+      pause_once = false;
     }
     if(digitalRead(button_pause) && pause_pressed)
     {      
@@ -1009,7 +790,6 @@ void loop() {
     {
       Pause = !Pause;
       pause_pressed = true;
-      mp3.playMp3FolderTrack(1);  // engine start + submarine sound
     }
     if(digitalRead(button_pause) && pause_pressed)
     {      
@@ -1020,10 +800,10 @@ void loop() {
   }
 }
 
-
-
-/** Thank you MarginallyClever
-* This file is part of LED8x16tetris.*
+/** 
+* Thank you electronoobs and MarginallyClever.   
+* 
+* Parts of this code were part of LED8x16tetris.* from electronoobs
 * LED8x16tetris is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or
