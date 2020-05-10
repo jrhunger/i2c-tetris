@@ -3,6 +3,8 @@
 //            Original: https://github.com/MarginallyClever/shift-register-tetris
 //------------------------------------------------------------------------------
 */
+
+#include "i2c_control.h"
         
 // did you wire your grid in an 'S' instead of a 'Z'?  change this value to 0.
 #define BACKWARDS           (0)
@@ -20,14 +22,6 @@
 #define INITIAL_DROP_DELAY  (500)
 #define INITIAL_DRAW_DELAY  (30)
 //////////////////////////////////////////////////////////////////
-
-//Inputs/outputs
-int button_left = 8;
-int button_right = 9;
-int button_up = 11;
-int button_down = 10;
-int button_pause = 7;
-int button_start = 12;
 
 //Variables
 byte adr = 0x08;
@@ -481,29 +475,16 @@ void remove_full_rows() {
 
 
 void try_to_move_piece_sideways() {
-  // what does the joystick angle say
-  int dx = 0; // fake idle joystick
-  
   int new_px = 0;
-  // is the joystick really being pushed?
-  if(dx> JOYSTICK_DEAD_ZONE) {
-    new_px=-1;
+  
+  if (controls.checkLeft()) {
+    new_px = -1;
   }
-  if(dx<-JOYSTICK_DEAD_ZONE) {
-    new_px=1;
+
+  if (controls.checkRight()) {
+    new_px = 1;
   }
   
-//  if(!digitalRead(button_left))
-//  {
-//    new_px=-1;
-//  }
-
-//  if(!digitalRead(button_right))
-//  {
-//    new_px=1;
-//  }
-  
-
   if(new_px!=old_px && piece_can_fit(piece_x+new_px,piece_y,piece_rotation)==1) {
     piece_x+=new_px;
   }
@@ -515,17 +496,9 @@ void try_to_move_piece_sideways() {
 void try_to_rotate_piece() {
   int i_want_to_turn=0;
   
-  // what does the joystick button say
-  int new_button = 0; //digitalRead(button_up);
-  // if the button state has just changed AND it is being let go,
-  if( new_button > 0 && old_button != new_button ) {
-    i_want_to_turn=1;
+  if (controls.checkUp()) {
+    i_want_to_turn = 1;
   }
-  old_button=new_button;
-  
-  // up on joystick to rotate
-  int dy = 0;
-  if(dy>JOYSTICK_DEAD_ZONE) i_want_to_turn=1;
   
   if(i_want_to_turn==1 && i_want_to_turn != old_i_want_to_turn) {
     // figure out what it will look like at that new angle
@@ -655,15 +628,7 @@ void try_to_drop_piece() {
 
 
 void try_to_drop_faster() {
-  int y = 0; // fake idle joystick
-
-//  if(!digitalRead(button_down))
-//  {
-//    try_to_drop_piece();
-//  }
-  
-  if(y<-JOYSTICK_DEAD_ZONE) {
-    // player is holding joystick down, drop a little faster.
+  if(controls.checkDown()) {
     try_to_drop_piece();
   }
 }
@@ -687,6 +652,8 @@ void tetrisSetup() {
   for(i=0;i<gridWidth*gridHeight;++i) {
     grid[i]=0;
   }
+
+  i2c_control_setup();
   
   // make the game a bit more random - pull a number from space and use it to 'seed' a crop of random numbers.
   randomSeed(25533); // TODO better random seed
