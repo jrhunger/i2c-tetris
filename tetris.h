@@ -13,14 +13,13 @@
 #define PIECE_H             (4)
 // how many kinds of pieces
 #define NUM_PIECE_TYPES     (7)
-// joystick options
-#define JOYSTICK_DEAD_ZONE  (30)
 // gravity options
 #define DROP_MINIMUM        (25)  // top speed gravity can reach
 #define DROP_ACCELERATION   (20)  // how fast gravity increases
 #define INITIAL_MOVE_DELAY  (100)
 #define INITIAL_DROP_DELAY  (500)
-#define INITIAL_DRAW_DELAY  (30)
+//#define INITIAL_DRAW_DELAY  (30)
+#define INITIAL_DRAW_DELAY (250)
 //////////////////////////////////////////////////////////////////
 
 //Variables
@@ -266,24 +265,111 @@ long grid[gridWidth*gridHeight];
 //--------------------------------------------------------------------------------
 
 
+// choose a new piece from the sequence.
+// the sequence is a random list that contains one of each piece.
+// that way you're guaranteed an even number of pieces over time,
+// tho the order is random.
+void choose_new_piece() {
+  if( sequence_i >= NUM_PIECE_TYPES ) {
+    // list exhausted
+    int i,j, k;
+    for(i=0;i<NUM_PIECE_TYPES;++i) {
+      do {
+        // pick a random piece
+        j = rand() % NUM_PIECE_TYPES;
+        // make sure it isn't already in the sequence.
+        for(k=0;k<i;++k) {
+          if(piece_sequence[k]==j) break;  // already in sequence
+        }
+      } while(k<i);
+      // not in sequence.  Add it.
+      piece_sequence[i] = j;
+    }
+    // rewind sequence counter
+    sequence_i=0;
+  }
+  
+  // get the next piece in the sequence.
+  piece_id = piece_sequence[sequence_i++];
+  // always start the piece top center.
+  piece_y=-2;  // top of the screen.
+  piece_x=gridWidth/2 - 2; //half of screen minus half of 4x4 piece
+  // always start in the same orientation.
+  piece_rotation=0;
+}
+// called once when arduino reboots
+void tetrisSetup() {  
+  //Setup 
+  int i;
+  
+  // make sure arduino knows the grid is empty.
+  for(i=0;i<gridWidth*gridHeight;++i) {
+    grid[i]=0;
+  }
+
+  i2c_control_setup();
+  
+  // make the game a bit more random - pull a number from space and use it to 'seed' a crop of random numbers.
+  randomSeed(25533); // TODO better random seed
+  
+  // get ready to start the game.
+  choose_new_piece();
+  
+  move_delay=INITIAL_MOVE_DELAY;
+  drop_delay=INITIAL_DROP_DELAY;
+  draw_delay=INITIAL_DRAW_DELAY;
+
+  // start the game clock after everything else is ready.
+  last_draw = last_drop = last_move = millis();
+}
+
+
 // I want to turn on point P(x,y), which is X from the left and Y from the top.
 void p(int x,int y,long color) {
   drawPixel(x,y,color);
 }
 
+void toggle_digit_on_grid(int digit, int x, int y) {
+  int i;
+  int j;
+  for (i = 0; i < digits_w; i++) {
+    for (j = 0; j < digits_h; j++) { 
+      if (digits[digit][digits_w*j + i] == 1) {
+        grid[(y+j)*gridWidth+x+i] = grid[(y+j)*gridWidth+x+i] ^ 0xA0A0A0;
+      }
+    }
+  }
+}
+
+void toggle_score_on_grid() {
+  int score1 = score - ( score/10 ) * 10;
+  int score10 = ((score - ((score/100 ) * 100)) - score1)/10;
+  int score100 = ((score - ((score/1000 ) * 1000)) - score10 - score1)/100;
+  Serial.println(String(score100) + String(score10) + String(score1));
+  toggle_digit_on_grid(score1, gridWidth - 5, 0);
+  toggle_digit_on_grid(score10, gridWidth - 10, 0);
+  toggle_digit_on_grid(score100, gridWidth - 15,0);
+}
 
 // grid contains the arduino's memory of the game board, including the piece that is falling.
 void draw_grid() {
   int x, y;
+  String line;
+  toggle_score_on_grid();
   for(y=0;y<gridHeight;++y) {
+    line = "";
     for(x=0;x<gridWidth;++x) {
       if( grid[y*gridWidth+x] != 0 ) {
         p(x,y,grid[y*gridWidth+x]);
+        line += "x";
       } else {
         p(x,y,0);
+        line += " ";
       }
     }
+    Serial.println(String(y) + ":" + line);
   }
+  toggle_score_on_grid();
   updateScreen();
 }
 
@@ -332,42 +418,6 @@ int piece_can_fit(int px,int py,int pr) {
   return 1;
 }
 
-
-
-// choose a new piece from the sequence.
-// the sequence is a random list that contains one of each piece.
-// that way you're guaranteed an even number of pieces over time,
-// tho the order is random.
-void choose_new_piece() {
-  if( sequence_i >= NUM_PIECE_TYPES ) {
-    // list exhausted
-    int i,j, k;
-    for(i=0;i<NUM_PIECE_TYPES;++i) {
-      do {
-        // pick a random piece
-        j = rand() % NUM_PIECE_TYPES;
-        // make sure it isn't already in the sequence.
-        for(k=0;k<i;++k) {
-          if(piece_sequence[k]==j) break;  // already in sequence
-        }
-      } while(k<i);
-      // not in sequence.  Add it.
-      piece_sequence[i] = j;
-    }
-    // rewind sequence counter
-    sequence_i=0;
-  }
-  
-  // get the next piece in the sequence.
-  piece_id = piece_sequence[sequence_i++];
-  // always start the piece top center.
-  piece_y=-4;  // -4 squares off the top of the screen.
-  piece_x=3;
-  // always start in the same orientation.
-  piece_rotation=0;
-}
-
-
 void erase_piece_from_grid() {
   int x, y;
   
@@ -385,7 +435,6 @@ void erase_piece_from_grid() {
     }
   }
 }
-
 
 void add_piece_to_grid() {
   int x, y;
@@ -405,39 +454,11 @@ void add_piece_to_grid() {
   }
 }
 
-
 // Move everything down 1 space, destroying the old row number y in the process.
 void delete_row(int y) {
   delay(35);
-  score = score + 10;
-/*  
-  if(score > top_score)
-  {
-    EEPROM_writeAnything(1, score);
-  }
-  
-  EEPROM_readAnything(1,top_score);
-  top_score_1 = top_score - (  ( top_score/10 ) * 10  );
-  top_score_2 = ((top_score - (  ( top_score/100 ) * 100  )) - top_score_1)/10;
-  top_score_3 = ((top_score - (  ( top_score/1000 ) * 1000  )) - top_score_1 - top_score_2)/100;
-  top_score_4 = (top_score - top_score_1 - top_score_2 - top_score_3) / 1000;
-  
-  score_1 = score - (  ( score/10 ) * 10  );
-  score_2 = ((score - (  ( score/100 ) * 100  )) - score_1)/10;
-  score_3 = ((score - (  ( score/1000 ) * 1000  )) - score_1 - score_2)/100;
-  score_4 = (score - score_1 - score_2 - score_3) / 1000;
-  
-  
-  shift(0x08, score_4); //digit 7 (leftmost digit) data
-  shift(0x07, score_3);
-  shift(0x06, score_2);
-  shift(0x05, score_1);
-  shift(0x04, top_score_4);
-  shift(0x03, top_score_3);
-  shift(0x02, top_score_2);
-  shift(0x01, top_score_1); //digit 0 (rightmost digit) data
-*/
-  
+  score = score + 1;
+    
   int x;
   for(;y>0;--y) {
     for(x=0;x<gridWidth;++x) {
@@ -524,21 +545,11 @@ void try_to_rotate_piece() {
 
 void draw_restart()
 {
+  fillScreen(rgb2int(50,50,250));
   fillScreen(0);
 
   // there was code to draw an R here, i think
-
-   /*if(!pause_once)
-   {
-    mp3.playMp3FolderTrack(2);  
-    pause_once = true;
-    delay(1000);
-   }*/
 }
-
-
-
-
 
 void all_white()
 {
@@ -587,7 +598,7 @@ void game_over() {
 //    }
   }
   all_white();
-  setup();
+  tetrisSetup();
   return;
 }
 
@@ -603,8 +614,7 @@ int game_is_over() {
         if(ny<0) return 1;  // yes: off the top!
       }
     }
-  }
-  
+  }  
   return 0;  // not over yet...
 }
 
@@ -623,6 +633,7 @@ void try_to_drop_piece() {
     }
     // game isn't over, choose a new piece
     choose_new_piece();
+    score+=1; // REMOVE
   }
 }
 
@@ -642,35 +653,6 @@ void react_to_player() {
   
   try_to_drop_faster();
 }
-
-// called once when arduino reboots
-void tetrisSetup() {  
-  //Setup 
-  int i;
-  
-  // make sure arduino knows the grid is empty.
-  for(i=0;i<gridWidth*gridHeight;++i) {
-    grid[i]=0;
-  }
-
-  i2c_control_setup();
-  
-  // make the game a bit more random - pull a number from space and use it to 'seed' a crop of random numbers.
-  randomSeed(25533); // TODO better random seed
-  
-  // get ready to start the game.
-  choose_new_piece();
-  
-  move_delay=INITIAL_MOVE_DELAY;
-  drop_delay=INITIAL_DROP_DELAY;
-  draw_delay=INITIAL_DRAW_DELAY;
-
-  // start the game clock after everything else is ready.
-  last_draw = last_drop = last_move = millis();
-}
-
-
-
 
 //Void used for sound pause
 void waitMilliseconds(uint16_t msWait)

@@ -13,7 +13,6 @@ void setup() {
   pinMode(LOOP_LED,OUTPUT);
   digitalWrite(LOOP_LED,HIGH); 
   xp16x25Setup();
-//  Serial.begin(115200);
   tetrisSetup();
   ledtime = millis();
 }

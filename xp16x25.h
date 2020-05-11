@@ -1,5 +1,7 @@
 /* xp16x25.h - functions and variables used to control my homebrew 16x25 
  *  display controlled by Teensy OctoWS2811
+ *  x goes left to right
+ *  y goes top to bottom
  *  
  *  make sure to set ledPowerPin appropriately
  *  
@@ -23,6 +25,8 @@
  *    adjustBrightness(float scale)
  *  
 */
+
+#include "digits.h"
 
 // ledPowerPin is configured so when it is set high it will turn
 // on the power to the LEDs (it's hooked to the base of an NPN transistor
@@ -133,6 +137,7 @@ void fillScreen(int color) {
   for (int i = 0; i<numPixels; i++) {
     leds.setPixel(i,color);
   }
+  leds.show();
 }
 
 void updateScreen() {
@@ -167,4 +172,32 @@ void adjustBrightness(float scale) {
     pixel=leds.getPixel(i);
     leds.setPixel(i, scalePixel(pixel,scale));
   }
+  leds.show();
+}
+
+void fillArea(int x, int y, int w, int h) {
+  int i, j;
+  for (i = 0; i<w; i++) {
+    for (j = 0; j<h; j++) {
+      drawPixel(x+i, y+j, 0);
+    }
+  }
+  leds.show();
+}
+
+// drawDigit - x,y is the top-left corner to draw it at
+void drawDigit(int digit, int x, int y) {
+  int i;
+  int j;
+  for (i = 0; i < digits_w; i++) {
+    for (j = 0; j < digits_h; j++) { 
+      if (digits[digit][digits_w*i + j] == 1) {
+        drawPixel(x+i, y+j, 200,200,200);
+      }
+      else {
+        drawPixel(x+i, y+j, 0);
+      }
+    }
+  }
+  leds.show();
 }
