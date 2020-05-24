@@ -17,6 +17,8 @@ void setup() {
   ledtime = millis();
 }
 
+// everything happens by interrupts so the loop just flashes the LED 
+// to show the micro is alive
 void loop() {
   if (millis() - ledtime > 500) {
     digitalWrite(LOOP_LED, HIGH);
